@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>貓咪方塊 Catris - 最終完美版</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --panel-bg: #34495e;
+            --accent: #f1c40f;
+            --btn-color: #3498db;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-color);
+            color: #ecf0f1;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            touch-action: none; /* 禁止手機上下滑動頁面 */
+            overflow: hidden;
+        }
+
+        /* 分數與等級看板 */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            width: 260px;
+            background: var(--panel-bg);
+            padding: 10px 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-sizing: border-box;
+        }
+        .hud-item { text-align: center; }
+        .hud-label { font-size: 12px; opacity: 0.7; letter-spacing: 1px; }
+        .hud-value { font-size: 20px; font-weight: bold; color: var(--accent); }
+
+        /* 遊戲區塊外框 */
+        #game-wrapper {
+            position: relative;
+            padding: 4px;
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 0 25px rgba(0,0,0,0.5);
+        }
+
+        /* 畫布 */
+        canvas {
+            display: block;
+            background-color: #111; /* 網格背景色 */
+        }
+
+        /* 遮罩層 (開始/結束/暫停) */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.88);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+
+        h2 { margin: 0 0 15px; color: var(--accent); font-size: 28px; text-shadow: 2px 2px 0 #000; }
+        p { color: #bdc3c7; margin-bottom: 20px; }
+
+        button {
+            background: #e67e22;
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px #d35400;
+            transition: transform 0.1s;
+        }
+        button:active { transform: translateY(2px); box-shadow: 0 2px #d35400; }
+
+        /* 底部控制區 */
+        .controls {
+            width: 260px;
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* 滑桿樣式 */
+        .slider-box {
+            display: flex;
+            align-items: center;
+            background: rgba(0,0,0,0.2);
+            padding: 8px 12px;
+            border-radius: 20px;
+        }
+        input[type=range] {
+            flex: 1;
+            margin: 0 10px;
+            -webkit-appearance: none;
+            height: 8px;
+            background: #bdc3c7;
+            border-radius: 4px;
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 28px; height: 28px;
+            background: #e74c3c;
+            border: 3px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        /* 按鈕群組 */
+        .btn-group { display: flex; gap: 10px; }
+        .btn-control {
+            flex: 1;
+            padding: 12px;
+            background: var(--btn-color);
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 4px #2980b9;
+            user-select: none;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .btn-control:active { box-shadow: 0 2px #2980b9; transform: translateY(2px); }
+        .btn-drop { background: #f39c12; box-shadow: 0 4px #d35400; }
+        .btn-drop:active { box-shadow: 0 2px #d35400; }
+        .btn-pause { background: #9b59b6; box-shadow: 0 4px #8e44ad; width: 100%; box-sizing: border-box; }
+        .btn-pause:active { box-shadow: 0 2px #8e44ad; }
+
+    </style>
+</head>
+<body>
+
+    <!-- 資訊面板 -->
+    <div class="hud">
+        <div class="hud-item">
+            <div class="hud-label">等級 (LV)</div>
+            <div class="hud-value" id="level">1</div>
+        </div>
+        <div class="hud-item">
+            <div class="hud-label">分數 (SCORE)</div>
+            <div class="hud-value" id="score">0</div>
+        </div>
+    </div>
+
+    <!-- 遊戲畫面 -->
+    <div id="game-wrapper">
+        <!-- 設定高度為 480 (20格 x 24px) 確保底部不被切掉 -->
+        <canvas id="tetris" width="240" height="480"></canvas>
+
+        <!-- 開始畫面 -->
+        <div id="start-screen" class="overlay">
+            <h2>🐱 貓咪方塊</h2>
+            <p>拖動滑桿移動，點擊按鈕操作</p>
+            <button onclick="startGame()">開始遊戲 ▶</button>
+        </div>
+        
+        <!-- 結束畫面 -->
+        <div id="game-over" class="overlay hidden">
+            <h2 style="color:#e74c3c">遊戲結束</h2>
+            <p>最終分數: <span id="final-score" style="color:#f1c40f; font-weight:bold;">0</span></p>
+            <button onclick="startGame()">重新開始 🔄</button>
+        </div>
+
+        <!-- 暫停畫面 -->
+        <div id="pause-screen" class="overlay hidden">
+            <h2>已暫停</h2>
+            <button onclick="togglePause()">繼續遊戲</button>
+        </div>
+    </div>
+
+    <!-- 控制區 -->
+    <div class="controls">
+        <div class="slider-box">
+            <span style="font-size:18px">📍</span>
+            <input type="range" id="slider" min="0" max="9" value="4" step="1">
+            <span style="font-size:18px">📍</span>
+        </div>
+        <div class="btn-group">
+            <div class="btn-control" id="rotate-btn">🔄 旋轉</div>
+            <div class="btn-control btn-drop" id="drop-btn">⬇️ 加速</div>
+        </div>
+        <div class="btn-control btn-pause" onclick="togglePause()">⏸ 暫停遊戲</div>
+    </div>
+
+<script>
+    // --- 1. 初始化與常數 ---
+    const canvas = document.getElementById('tetris');
+    const ctx = canvas.getContext('2d');
+    const ROW = 20;
+    const COL = 10;
+    const SQ = 24; // 方塊大小
+    const VACANT = "#111"; // 空格顏色
+
+    // 形狀資料
+    const I = [ [[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]], [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], [[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]], [[0,0,0,0],[0,0,0,0],[1,1,1,1],[0,0,0,0]] ];
+    const J = [ [[1,0,0],[1,1,1],[0,0,0]], [[0,1,1],[0,1,0],[0,1,0]], [[0,0,0],[1,1,1],[0,0,1]], [[0,1,0],[0,1,0],[1,1,0]] ];
+    const L = [ [[0,0,1],[1,1,1],[0,0,0]], [[0,1,0],[0,1,0],[0,1,1]], [[0,0,0],[1,1,1],[1,0,0]], [[1,1,0],[0,1,0],[0,1,0]] ];
+    const O = [ [[0,0,0,0],[0,1,1,0],[0,1,1,0],[0,0,0,0]] ];
+    const S = [ [[0,1,1],[1,1,0],[0,0,0]], [[0,1,0],[0,1,1],[0,0,1]], [[0,0,0],[0,1,1],[1,1,0]], [[1,0,0],[1,1,0],[0,1,0]] ];
+    const T = [ [[0,1,0],[1,1,1],[0,0,0]], [[0,1,0],[0,1,1],[0,1,0]], [[0,0,0],[1,1,1],[0,1,0]], [[0,1,0],[1,1,0],[0,1,0]] ];
+    const Z = [ [[1,1,0],[0,1,1],[0,0,0]], [[0,0,1],[0,1,1],[0,1,0]], [[0,0,0],[1,1,0],[0,1,1]], [[0,1,0],[1,1,0],[1,0,0]] ];
+
+    // 貓咪顏色對應
+    const PIECES = [
+        [Z, "#e57373"], // 紅貓
+        [S, "#81c784"], // 綠貓
+        [T, "#ba68c8"], // 紫貓
+        [O, "#ffd54f"], // 黃貓
+        [L, "#ffb74d"], // 橘貓
+        [I, "#4fc3f7"], // 藍貓
+        [J, "#7986cb"]  // 深藍貓
+    ];
+
+    // 遊戲變數
+    let board = [];
+    let score = 0;
+    let level = 1;
+    let gameRunning = false;
+    let isPaused = false;
+    let p; // 當前方塊
+    let dropStart = Date.now();
+    let animationFrame; // 動畫幀 ID
+    let speed = 1000;
+
+    // UI 元素
+    const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const slider = document.getElementById('slider');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over');
+    const pauseScreen = document.getElementById('pause-screen');
+
+    // --- 2. 繪圖函數 ---
+
+    function createBoard() {
+        for(let r=0; r<ROW; r++){
+            board[r] = [];
+            for(let c=0; c<COL; c++){
+                board[r][c] = VACANT;
+            }
+        }
+    }
+
+    function drawSquare(x, y, color){
+        if(color === VACANT){
+            // 繪製網格
+            ctx.fillStyle = VACANT;
+            ctx.fillRect(x*SQ, y*SQ, SQ, SQ);
+            ctx.strokeStyle = "#222";
+            ctx.strokeRect(x*SQ, y*SQ, SQ, SQ);
+        } else {
+            // 繪製貓咪方塊
+            ctx.fillStyle = color;
+            ctx.fillRect(x*SQ, y*SQ, SQ, SQ);
+            ctx.strokeStyle = "#fff"; // 白色邊框
+            ctx.strokeRect(x*SQ, y*SQ, SQ, SQ);
+            
+            // 貓臉細節
+            ctx.fillStyle = "rgba(255,255,255,0.6)";
+            ctx.beginPath(); ctx.arc(x*SQ+7, y*SQ+10, 2, 0, Math.PI*2); ctx.fill(); // 左眼
+            ctx.beginPath(); ctx.arc(x*SQ+17, y*SQ+10, 2, 0, Math.PI*2); ctx.fill(); // 右眼
+            ctx.fillStyle = "pink";
+            ctx.beginPath(); ctx.arc(x*SQ+12, y*SQ+15, 2, 0, Math.PI*2); ctx.fill(); // 鼻子
+        }
+    }
+
+    function draw(){
+        // 重繪整個畫面
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 畫已固定的方塊
+        for(let r=0; r<ROW; r++){
+            for(let c=0; c<COL; c++){
+                drawSquare(c, r, board[r][c]);
+            }
+        }
+
+        // 2. 畫移動中的方塊
+        if(p){
+            for(let r=0; r<p.activeTetromino.length; r++){
+                for(let c=0; c<p.activeTetromino.length; c++){
+                    if(p.activeTetromino[r][c]){
+                        drawSquare(p.x + c, p.y + r, p.color);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- 3. 方塊物件與邏輯 ---
+
+    function Piece(tetromino, color){
+        this.tetromino = tetromino;
+        this.color = color;
+        this.tetrominoN = 0;
+        this.activeTetromino = this.tetromino[this.tetrominoN];
+        this.x = 3;
+        this.y = -2;
+    }
+
+    // ★ 關鍵修復：計算方塊左邊的空白偏移量
+    Piece.prototype.getLeftOffset = function() {
+        const matrix = this.activeTetromino;
+        const N = matrix.length;
+        for (let c = 0; c < N; c++) {
+            for (let r = 0; r < N; r++) {
+                if (matrix[r][c]) {
+                    return c; // 找到第一個有實體的列
+                }
+            }
+        }
+        return 0;
+    };
+
+    // ★ 取得「視覺上」的 X 座標 (對應滑桿)
+    Piece.prototype.getVisualX = function() {
+        return this.x + this.getLeftOffset();
+    };
+
+    Piece.prototype.collision = function(x, y, piece){
+        for(let r=0; r<piece.length; r++){
+            for(let c=0; c<piece.length; c++){
+                if(!piece[r][c]) continue;
+                let newX = this.x + c + x;
+                let newY = this.y + r + y;
+                
+                if(newX < 0 || newX >= COL || newY >= ROW){
+                    return true;
+                }
+                if(newY < 0) continue;
+                if(board[newY][newX] !== VACANT){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    Piece.prototype.lock = function(){
+        for(let r=0; r<this.activeTetromino.length; r++){
+            for(let c=0; c<this.activeTetromino.length; c++){
+                if(!this.activeTetromino[r][c]) continue;
+                // 遊戲結束檢查
+                if(this.y + r < 0){
+                    gameRunning = false;
+                    gameOverScreen.classList.remove('hidden');
+                    document.getElementById('final-score').innerText = score;
+                    return;
+                }
+                // 寫入盤面
+                board[this.y + r][this.x + c] = this.color;
+            }
+        }
+
+        // 消除滿行
+        let lines = 0;
+        for(let r=0; r<ROW; r++){
+            let isFull = true;
+            for(let c=0; c<COL; c++){
+                if(board[r][c] === VACANT) isFull = false;
+            }
+            if(isFull){
+                lines++;
+                for(let y=r; y>0; y--){
+                    for(let c=0; c<COL; c++){
+                        board[y][c] = board[y-1][c];
+                    }
+                }
+                for(let c=0; c<COL; c++) board[0][c] = VACANT;
+            }
+        }
+
+        // 計分
+        if(lines > 0){
+            score += lines * 100;
+            scoreEl.innerText = score;
+            level = Math.floor(score/500) + 1;
+            levelEl.innerText = level;
+            speed = Math.max(100, 1000 - (level-1)*100);
+        }
+
+        // 生成新方塊並更新滑桿
+        p = randomPiece();
+        slider.value = p.getVisualX();
+    }
+
+    Piece.prototype.moveDown = function(){
+        if(!this.collision(0, 1, this.activeTetromino)){
+            this.y++;
+        } else {
+            this.lock();
+        }
+        draw();
+    }
+    
+    Piece.prototype.moveRight = function(){
+        if(!this.collision(1, 0, this.activeTetromino)) {
+            this.x++;
+            slider.value = this.getVisualX(); // 同步滑桿
+        }
+    }
+    
+    Piece.prototype.moveLeft = function(){
+        if(!this.collision(-1, 0, this.activeTetromino)) {
+            this.x--;
+            slider.value = this.getVisualX(); // 同步滑桿
+        }
+    }
+    
+    Piece.prototype.rotate = function(){
+        let nextPattern = this.tetromino[(this.tetrominoN + 1) % this.tetromino.length];
+        let kick = 0;
+        if(this.collision(0,0,nextPattern)){
+            if(this.x > COL/2) kick = -1; else kick = 1;
+            // 嘗試強力踢牆 (Wall Kick)
+            if(this.collision(kick,0,nextPattern)) kick = (kick===-1) ? -2 : 2; 
+        }
+        if(!this.collision(kick,0,nextPattern)){
+            this.x += kick;
+            this.tetrominoN = (this.tetrominoN + 1) % this.tetromino.length;
+            this.activeTetromino = this.tetromino[this.tetrominoN];
+            slider.value = this.getVisualX(); // 同步滑桿
+        }
+    }
+
+    function randomPiece(){
+        let r = Math.floor(Math.random() * PIECES.length);
+        return new Piece(PIECES[r][0], PIECES[r][1]);
+    }
+
+    // --- 4. 遊戲循環控制 ---
+
+    function update(){
+        if(!gameRunning || isPaused) return;
+        
+        let now = Date.now();
+        let delta = now - dropStart;
+        if(delta > speed){
+            p.moveDown();
+            dropStart = Date.now();
+        }
+        draw();
+        animationFrame = requestAnimationFrame(update);
+    }
+
+    function startGame(){
+        createBoard();
+        score = 0; 
+        level = 1;
+        speed = 1000;
+        scoreEl.innerText = "0";
+        levelEl.innerText = "1";
+        
+        gameRunning = true;
+        isPaused = false;
+        
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        pauseScreen.classList.add('hidden');
+        
+        p = randomPiece();
+        slider.value = p.getVisualX();
+        dropStart = Date.now();
+        
+        if(animationFrame) cancelAnimationFrame(animationFrame);
+        update();
+    }
+
+    function togglePause(){
+        if(!gameRunning) return;
+        isPaused = !isPaused;
+        
+        if(isPaused){
+            pauseScreen.classList.remove('hidden');
+        } else {
+            pauseScreen.classList.add('hidden');
+            dropStart = Date.now();
+            update();
+        }
+    }
+
+    // --- 5. 事件監聽 ---
+
+    // 滑桿操作邏輯 (使用視覺座標校正)
+    slider.addEventListener('input', function(){
+        if(!gameRunning || isPaused) return;
+        let targetVisualX = parseInt(this.value);
+        
+        // 嘗試往右追
+        while(p.getVisualX() < targetVisualX){
+            if(!p.collision(1, 0, p.activeTetromino)) p.x++; else break;
+        }
+        // 嘗試往左追
+        while(p.getVisualX() > targetVisualX){
+            if(!p.collision(-1, 0, p.activeTetromino)) p.x--; else break;
+        }
+        draw();
+    });
+
+    document.getElementById('rotate-btn').addEventListener('click', ()=>{ if(gameRunning && !isPaused){ p.rotate(); draw(); } });
+    document.getElementById('drop-btn').addEventListener('click', ()=>{ if(gameRunning && !isPaused){ p.moveDown(); draw(); } });
+
+    // 鍵盤操作
+    document.addEventListener('keydown', (e)=>{
+        if(!gameRunning || isPaused) return;
+        if(e.keyCode == 37) p.moveLeft();
+        if(e.keyCode == 38) { p.rotate(); draw(); }
+        if(e.keyCode == 39) p.moveRight();
+        if(e.keyCode == 40) p.moveDown();
+        if(e.keyCode == 32) togglePause(); // 空白鍵暫停
+    });
+
+    // 初始畫面
+    createBoard();
+    draw();
+
+</script>
+</body>
+</html>
